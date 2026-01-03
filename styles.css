@@ -196,13 +196,14 @@ body {
 }
 
 .grid-item.dragging {
-    opacity: 0.85;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+    background: #6d6254 !important;
+    opacity: 0.9;
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
     z-index: 1000;
     cursor: grabbing;
-    transition: opacity 0.1s ease, box-shadow 0.1s ease;
-    /* Sin transición en posición para movimiento fluido */
-    transition: opacity 0.1s ease, box-shadow 0.1s ease !important;
+    pointer-events: none;
+    /* Sin transiciones para movimiento fluido */
+    transition: none !important;
 }
 
 .grid-item .item-number {
@@ -357,11 +358,12 @@ body {
 .selection-overlay::before {
     content: '';
     display: none;
-    background: rgba(255, 182, 193, 0.4);
-    border: 2px solid rgba(255, 105, 135, 0.6);
+    background: rgba(255, 182, 193, 0.35);
+    border: 2px dashed rgba(255, 105, 135, 0.7);
     border-radius: 10px;
     grid-column: var(--sel-col-start, 1) / var(--sel-col-end, 2);
     grid-row: var(--sel-row-start, 1) / var(--sel-row-end, 2);
+    transition: all 0.1s ease;
 }
 
 .selection-overlay.active::before {

@@ -33,6 +33,10 @@ let draggedElement = null;
 let resizingElement = null;
 let startX, startY, startColSpan, startRowSpan;
 
+// Variables para arrastre flotante
+let dragOffset = { x: 0, y: 0 };
+let ghostPosition = { col: 1, row: 1, colSpan: 1, rowSpan: 1 };
+
 // Inicializar
 function init() {
     generateGridCells();
@@ -165,54 +169,79 @@ function getCellFromPoint(x, y) {
     return null;
 }
 
-// Obtener celda desde coordenadas usando cálculo directo (más sensible)
+// Obtener celda desde coordenadas usando cálculo directo (simétrico en todas direcciones)
 function getCellFromPointCalculated(x, y, isDragging = false) {
     const gridRect = gridCells.getBoundingClientRect();
 
-    // Verificar si está fuera del grid
+    // Verificar si está fuera del grid y ajustar
     if (x < gridRect.left || x > gridRect.right || y < gridRect.top || y > gridRect.bottom) {
-        // Si está fuera, usar los límites
         x = Math.max(gridRect.left, Math.min(x, gridRect.right));
-        y = Math.max(gridRect.top, Math.min(y, gridRect.top + gridRect.height));
+        y = Math.max(gridRect.top, Math.min(y, gridRect.bottom));
     }
 
     // Calcular posición relativa dentro del grid
-    const relX = Math.max(0, x - gridRect.left);
-    const relY = Math.max(0, y - gridRect.top);
+    const relX = x - gridRect.left;
+    const relY = y - gridRect.top;
 
-    // Calcular dimensiones de cada celda incluyendo el gap
+    // Calcular dimensiones de cada celda
     const totalGapX = state.gap * (state.columns - 1);
     const totalGapY = state.gap * (state.rows - 1);
     const cellWidth = (gridRect.width - totalGapX) / state.columns;
     const cellHeight = (gridRect.height - totalGapY) / state.rows;
 
-    // Calcular con paso de celda + gap
-    const cellPlusGapWidth = cellWidth + state.gap;
-    const cellPlusGapHeight = cellHeight + state.gap;
+    // Lógica simétrica: calcular celda basada en el centro de cada celda
+    let col = 1;
+    let row = 1;
 
-    // Calcular columna y fila de manera más directa y fluida
-    let col = Math.floor(relX / cellPlusGapWidth) + 1;
-    let row = Math.floor(relY / cellPlusGapHeight) + 1;
+    // Calcular columna - simétrico en ambas direcciones
+    let accX = 0;
+    for (let c = 1; c <= state.columns; c++) {
+        const cellStart = accX;
+        const cellCenter = accX + cellWidth / 2;
+        const cellEnd = accX + cellWidth;
 
-    // Si está en el gap, usar la celda anterior
-    const xInCell = relX % cellPlusGapWidth;
-    const yInCell = relY % cellPlusGapHeight;
-
-    // Si está en el gap entre celdas y arrastrando, ser más sensible
-    if (isDragging) {
-        // Si está en el gap horizontal (después de una celda), considerar la siguiente
-        if (xInCell > cellWidth && col < state.columns) {
-            // Estar más de la mitad del gap significa ir a la siguiente celda
-            if (xInCell > cellWidth + state.gap / 2) {
-                col++;
+        if (relX <= cellCenter) {
+            col = c;
+            break;
+        } else if (c < state.columns) {
+            // Verificar si está en el gap
+            const gapEnd = cellEnd + state.gap;
+            if (relX < gapEnd - state.gap / 2) {
+                col = c;
+                break;
+            } else if (relX < gapEnd) {
+                col = c + 1;
+                break;
             }
+            accX = gapEnd;
+        } else {
+            col = state.columns;
         }
+    }
 
-        // Si está en el gap vertical (después de una celda), considerar la siguiente
-        if (yInCell > cellHeight && row < state.rows) {
-            if (yInCell > cellHeight + state.gap / 2) {
-                row++;
+    // Calcular fila - simétrico en ambas direcciones
+    let accY = 0;
+    for (let r = 1; r <= state.rows; r++) {
+        const cellStart = accY;
+        const cellCenter = accY + cellHeight / 2;
+        const cellEnd = accY + cellHeight;
+
+        if (relY <= cellCenter) {
+            row = r;
+            break;
+        } else if (r < state.rows) {
+            // Verificar si está en el gap
+            const gapEnd = cellEnd + state.gap;
+            if (relY < gapEnd - state.gap / 2) {
+                row = r;
+                break;
+            } else if (relY < gapEnd) {
+                row = r + 1;
+                break;
             }
+            accY = gapEnd;
+        } else {
+            row = state.rows;
         }
     }
 
@@ -240,9 +269,38 @@ function handleSelectionStart(e) {
             }
             return;
         }
-        // Iniciar drag
+        // Iniciar drag flotante
         draggedElement = item;
-        item.classList.add('dragging');
+        const elementId = parseInt(item.dataset.id);
+        const element = state.elements.find(el => el.id === elementId);
+
+        if (element) {
+            // Calcular offset del mouse respecto al elemento
+            const rect = item.getBoundingClientRect();
+            dragOffset.x = e.clientX - rect.left;
+            dragOffset.y = e.clientY - rect.top;
+
+            // Guardar posición inicial del ghost
+            ghostPosition = {
+                col: element.column,
+                row: element.row,
+                colSpan: element.columnSpan,
+                rowSpan: element.rowSpan
+            };
+
+            // Activar clase dragging y modo flotante
+            item.classList.add('dragging');
+            item.style.position = 'fixed';
+            item.style.left = `${rect.left}px`;
+            item.style.top = `${rect.top}px`;
+            item.style.width = `${rect.width}px`;
+            item.style.height = `${rect.height}px`;
+            item.style.margin = '0';
+            item.style.zIndex = '1000';
+
+            // Mostrar ghost rosado
+            updateGhostOverlay();
+        }
         return;
     }
 
@@ -259,33 +317,102 @@ function handleSelectionStart(e) {
 
 // Mover selección
 function handleSelectionMove(e) {
-    // Si estamos arrastrando un elemento existente, actualizar su posición visualmente
+    // Si estamos arrastrando un elemento existente
     if (draggedElement) {
-        const cell = getCellFromPointCalculated(e.clientX, e.clientY, true);
-        if (cell) {
-            const elementId = parseInt(draggedElement.dataset.id);
-            const element = state.elements.find(el => el.id === elementId);
-            if (element) {
-                let newCol = cell.col;
-                let newRow = cell.row;
+        const elementId = parseInt(draggedElement.dataset.id);
+        const element = state.elements.find(el => el.id === elementId);
 
-                // Ajustar automáticamente si el elemento se sale por la derecha
-                if (newCol + element.columnSpan - 1 > state.columns) {
-                    newCol = state.columns - element.columnSpan + 1;
+        if (element) {
+            // Actualizar posición flotante del elemento (sigue el cursor libremente)
+            draggedElement.style.left = `${e.clientX - dragOffset.x}px`;
+            draggedElement.style.top = `${e.clientY - dragOffset.y}px`;
+
+            // Calcular la esquina superior izquierda del elemento flotante
+            const elementTopLeftX = e.clientX - dragOffset.x;
+            const elementTopLeftY = e.clientY - dragOffset.y;
+
+            // Calcular el centro del elemento flotante para lógica de snap
+            const gridRect = gridCells.getBoundingClientRect();
+            const totalGapX = state.gap * (state.columns - 1);
+            const totalGapY = state.gap * (state.rows - 1);
+            const cellWidth = (gridRect.width - totalGapX) / state.columns;
+            const cellHeight = (gridRect.height - totalGapY) / state.rows;
+
+            // Calcular cuántos píxeles ocupa el elemento en el grid
+            const elementWidthInGrid = element.columnSpan * cellWidth + (element.columnSpan - 1) * state.gap;
+            const elementHeightInGrid = element.rowSpan * cellHeight + (element.rowSpan - 1) * state.gap;
+
+            // Calcular el punto de anclaje del elemento (esquina superior izquierda)
+            const anchorX = elementTopLeftX;
+            const anchorY = elementTopLeftY;
+
+            // Posición relativa al grid
+            const relX = anchorX - gridRect.left;
+            const relY = anchorY - gridRect.top;
+
+            // Calcular la celda usando lógica de punto medio (50%)
+            let targetCol = 1;
+            let targetRow = 1;
+
+            // Calcular columna con lógica de 50%
+            let accX = 0;
+            for (let c = 1; c <= state.columns; c++) {
+                const cellStart = accX;
+                const cellMid = accX + cellWidth / 2;
+                const cellEnd = accX + cellWidth;
+
+                if (relX < cellMid) {
+                    targetCol = c;
+                    break;
+                } else if (c === state.columns) {
+                    targetCol = state.columns;
+                } else {
+                    // Avanzar al siguiente incluyendo el gap
+                    accX = cellEnd + state.gap;
                 }
+            }
 
-                // Ajustar automáticamente si el elemento se sale por abajo
-                if (newRow + element.rowSpan - 1 > state.rows) {
-                    newRow = state.rows - element.rowSpan + 1;
+            // Calcular fila con lógica de 50%
+            let accY = 0;
+            for (let r = 1; r <= state.rows; r++) {
+                const cellStart = accY;
+                const cellMid = accY + cellHeight / 2;
+                const cellEnd = accY + cellHeight;
+
+                if (relY < cellMid) {
+                    targetRow = r;
+                    break;
+                } else if (r === state.rows) {
+                    targetRow = state.rows;
+                } else {
+                    // Avanzar al siguiente incluyendo el gap
+                    accY = cellEnd + state.gap;
                 }
+            }
 
-                // Asegurar que la posición sea válida
-                newCol = Math.max(1, newCol);
-                newRow = Math.max(1, newRow);
+            // Ajustar automáticamente si el elemento se sale por la derecha
+            if (targetCol + element.columnSpan - 1 > state.columns) {
+                targetCol = state.columns - element.columnSpan + 1;
+            }
 
-                // Actualizar posición visual en tiempo real (sin throttle para mayor fluidez)
-                draggedElement.style.gridColumn = `${newCol} / span ${element.columnSpan}`;
-                draggedElement.style.gridRow = `${newRow} / span ${element.rowSpan}`;
+            // Ajustar automáticamente si el elemento se sale por abajo
+            if (targetRow + element.rowSpan - 1 > state.rows) {
+                targetRow = state.rows - element.rowSpan + 1;
+            }
+
+            // Asegurar que esté dentro del grid
+            targetCol = Math.max(1, targetCol);
+            targetRow = Math.max(1, targetRow);
+
+            // Actualizar posición del ghost solo si cambió
+            if (ghostPosition.col !== targetCol || ghostPosition.row !== targetRow) {
+                ghostPosition.col = targetCol;
+                ghostPosition.row = targetRow;
+                ghostPosition.colSpan = element.columnSpan;
+                ghostPosition.rowSpan = element.rowSpan;
+
+                // Mostrar ghost rosado en la posición objetivo
+                updateGhostOverlay();
             }
         }
         return;
@@ -308,36 +435,30 @@ function handleSelectionEnd(e) {
         const element = state.elements.find(el => el.id === elementId);
 
         if (element) {
-            // Hacer un cálculo final para asegurar la posición correcta
-            const cell = getCellFromPointCalculated(e.clientX, e.clientY, true);
-            if (cell) {
-                let newCol = cell.col;
-                let newRow = cell.row;
+            // Actualizar posición del elemento según la posición del ghost
+            element.column = ghostPosition.col;
+            element.row = ghostPosition.row;
 
-                // Ajustar automáticamente si el elemento se sale por la derecha
-                if (newCol + element.columnSpan - 1 > state.columns) {
-                    newCol = state.columns - element.columnSpan + 1;
-                }
+            // Restaurar estilos del elemento (quitar modo flotante)
+            draggedElement.style.position = '';
+            draggedElement.style.left = '';
+            draggedElement.style.top = '';
+            draggedElement.style.width = '';
+            draggedElement.style.height = '';
+            draggedElement.style.margin = '';
+            draggedElement.style.zIndex = '';
 
-                // Ajustar automáticamente si el elemento se sale por abajo
-                if (newRow + element.rowSpan - 1 > state.rows) {
-                    newRow = state.rows - element.rowSpan + 1;
-                }
-
-                // Actualizar el estado del elemento
-                element.column = Math.max(1, newCol);
-                element.row = Math.max(1, newRow);
-
-                // Asegurar que el elemento esté en la posición correcta visualmente
-                draggedElement.style.gridColumn = `${element.column} / span ${element.columnSpan}`;
-                draggedElement.style.gridRow = `${element.row} / span ${element.rowSpan}`;
-            }
+            // Posicionar en el grid
+            draggedElement.style.gridColumn = `${element.column} / span ${element.columnSpan}`;
+            draggedElement.style.gridRow = `${element.row} / span ${element.rowSpan}`;
 
             generateCode();
         }
 
+        // Limpiar estado de arrastre
         draggedElement.classList.remove('dragging');
         draggedElement = null;
+        hideGhostOverlay();
         return;
     }
 
@@ -371,6 +492,38 @@ function handleSelectionEnd(e) {
 
 // Cancelar selección si el mouse sale del grid
 function handleSelectionCancel(e) {
+    // Si estamos arrastrando un elemento, aplicar la posición actual
+    if (draggedElement) {
+        const elementId = parseInt(draggedElement.dataset.id);
+        const element = state.elements.find(el => el.id === elementId);
+
+        if (element) {
+            // Aplicar posición del ghost
+            element.column = ghostPosition.col;
+            element.row = ghostPosition.row;
+
+            // Restaurar estilos
+            draggedElement.style.position = '';
+            draggedElement.style.left = '';
+            draggedElement.style.top = '';
+            draggedElement.style.width = '';
+            draggedElement.style.height = '';
+            draggedElement.style.margin = '';
+            draggedElement.style.zIndex = '';
+
+            // Posicionar en el grid
+            draggedElement.style.gridColumn = `${element.column} / span ${element.columnSpan}`;
+            draggedElement.style.gridRow = `${element.row} / span ${element.rowSpan}`;
+
+            generateCode();
+        }
+
+        draggedElement.classList.remove('dragging');
+        draggedElement = null;
+        hideGhostOverlay();
+        return;
+    }
+
     if (state.isSelecting) {
         state.isSelecting = false;
         hideSelectionOverlay();
@@ -395,6 +548,20 @@ function updateSelectionOverlay() {
 
 // Ocultar overlay de selección
 function hideSelectionOverlay() {
+    selectionOverlay.classList.remove('active');
+}
+
+// Actualizar ghost overlay (para arrastre de elementos)
+function updateGhostOverlay() {
+    selectionOverlay.style.setProperty('--sel-col-start', ghostPosition.col);
+    selectionOverlay.style.setProperty('--sel-col-end', ghostPosition.col + ghostPosition.colSpan);
+    selectionOverlay.style.setProperty('--sel-row-start', ghostPosition.row);
+    selectionOverlay.style.setProperty('--sel-row-end', ghostPosition.row + ghostPosition.rowSpan);
+    selectionOverlay.classList.add('active');
+}
+
+// Ocultar ghost overlay
+function hideGhostOverlay() {
     selectionOverlay.classList.remove('active');
 }
 
