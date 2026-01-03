@@ -7,8 +7,7 @@ const state = {
     elementCounter: 1,
     isSelecting: false,
     selectionStart: null,
-    selectionEnd: null,
-    pendingSelection: null
+    selectionEnd: null
 };
 
 // Referencias DOM
@@ -28,10 +27,6 @@ const tabBtns = document.querySelectorAll('.tab-btn');
 const htmlCodeBlock = document.querySelector('#html-code code');
 const cssCodeBlock = document.querySelector('#css-code code');
 const selectionOverlay = document.getElementById('selection-overlay');
-const confirmationPanel = document.getElementById('confirmation-panel');
-const panelSize = document.getElementById('panel-size');
-const confirmBtn = document.getElementById('confirm-btn');
-const cancelBtn = document.getElementById('cancel-btn');
 
 // Variables para drag & drop de elementos existentes
 let draggedElement = null;
@@ -76,10 +71,6 @@ function setupEventListeners() {
     gridMain.addEventListener('mousemove', handleSelectionMove);
     gridMain.addEventListener('mouseup', handleSelectionEnd);
     gridMain.addEventListener('mouseleave', handleSelectionCancel);
-
-    // Botones de confirmación
-    confirmBtn.addEventListener('click', confirmSelection);
-    cancelBtn.addEventListener('click', cancelSelection);
 }
 
 // Configurar botón de control con +/-
@@ -139,7 +130,7 @@ function generateGridCells() {
 // Actualizar estilos del grid
 function updateGridStyles() {
     const gridStyle = `repeat(${state.columns}, 1fr)`;
-    const rowStyle = `repeat(${state.rows}, 1fr)`;
+    const rowStyle = `repeat(${state.rows}, minmax(50px, 1fr))`;
     const gapStyle = `${state.gap}px`;
 
     // Actualizar celdas base
@@ -147,12 +138,12 @@ function updateGridStyles() {
     gridCells.style.gridTemplateRows = rowStyle;
     gridCells.style.gap = gapStyle;
 
-    // Actualizar capa de items
+    // Actualizar capa de items (debe tener las mismas dimensiones)
     gridItems.style.gridTemplateColumns = gridStyle;
     gridItems.style.gridTemplateRows = rowStyle;
     gridItems.style.gap = gapStyle;
 
-    // Actualizar overlay de selección
+    // Actualizar overlay de selección (debe tener las mismas dimensiones)
     selectionOverlay.style.gridTemplateColumns = gridStyle;
     selectionOverlay.style.gridTemplateRows = rowStyle;
     selectionOverlay.style.gap = gapStyle;
@@ -174,13 +165,20 @@ function getCellFromPoint(x, y) {
     return null;
 }
 
-// Obtener celda desde coordenadas usando cálculo directo
-function getCellFromPointCalculated(x, y) {
+// Obtener celda desde coordenadas usando cálculo directo (más sensible)
+function getCellFromPointCalculated(x, y, isDragging = false) {
     const gridRect = gridCells.getBoundingClientRect();
 
+    // Verificar si está fuera del grid
+    if (x < gridRect.left || x > gridRect.right || y < gridRect.top || y > gridRect.bottom) {
+        // Si está fuera, usar los límites
+        x = Math.max(gridRect.left, Math.min(x, gridRect.right));
+        y = Math.max(gridRect.top, Math.min(y, gridRect.top + gridRect.height));
+    }
+
     // Calcular posición relativa dentro del grid
-    const relX = x - gridRect.left;
-    const relY = y - gridRect.top;
+    const relX = Math.max(0, x - gridRect.left);
+    const relY = Math.max(0, y - gridRect.top);
 
     // Calcular dimensiones de cada celda incluyendo el gap
     const totalGapX = state.gap * (state.columns - 1);
@@ -188,32 +186,34 @@ function getCellFromPointCalculated(x, y) {
     const cellWidth = (gridRect.width - totalGapX) / state.columns;
     const cellHeight = (gridRect.height - totalGapY) / state.rows;
 
-    // Calcular columna y fila
-    let col = 1;
-    let row = 1;
-    let accumulatedX = 0;
-    let accumulatedY = 0;
+    // Calcular con paso de celda + gap
+    const cellPlusGapWidth = cellWidth + state.gap;
+    const cellPlusGapHeight = cellHeight + state.gap;
 
-    // Encontrar columna
-    for (let c = 1; c <= state.columns; c++) {
-        const cellEnd = accumulatedX + cellWidth;
-        if (relX < cellEnd) {
-            col = c;
-            break;
-        }
-        accumulatedX = cellEnd + state.gap;
-        if (c === state.columns) col = state.columns;
-    }
+    // Calcular columna y fila de manera más directa y fluida
+    let col = Math.floor(relX / cellPlusGapWidth) + 1;
+    let row = Math.floor(relY / cellPlusGapHeight) + 1;
 
-    // Encontrar fila
-    for (let r = 1; r <= state.rows; r++) {
-        const cellEnd = accumulatedY + cellHeight;
-        if (relY < cellEnd) {
-            row = r;
-            break;
+    // Si está en el gap, usar la celda anterior
+    const xInCell = relX % cellPlusGapWidth;
+    const yInCell = relY % cellPlusGapHeight;
+
+    // Si está en el gap entre celdas y arrastrando, ser más sensible
+    if (isDragging) {
+        // Si está en el gap horizontal (después de una celda), considerar la siguiente
+        if (xInCell > cellWidth && col < state.columns) {
+            // Estar más de la mitad del gap significa ir a la siguiente celda
+            if (xInCell > cellWidth + state.gap / 2) {
+                col++;
+            }
         }
-        accumulatedY = cellEnd + state.gap;
-        if (r === state.rows) row = state.rows;
+
+        // Si está en el gap vertical (después de una celda), considerar la siguiente
+        if (yInCell > cellHeight && row < state.rows) {
+            if (yInCell > cellHeight + state.gap / 2) {
+                row++;
+            }
+        }
     }
 
     return {
@@ -259,25 +259,9 @@ function handleSelectionStart(e) {
 
 // Mover selección
 function handleSelectionMove(e) {
-    // Si estamos arrastrando un elemento existente
+    // Si estamos arrastrando un elemento existente, actualizar su posición visualmente
     if (draggedElement) {
-        return;
-    }
-
-    if (!state.isSelecting) return;
-
-    const cell = getCellFromPoint(e.clientX, e.clientY);
-    if (!cell) return;
-
-    state.selectionEnd = { col: cell.col, row: cell.row };
-    updateSelectionOverlay();
-}
-
-// Finalizar selección
-function handleSelectionEnd(e) {
-    // Si estábamos arrastrando un elemento
-    if (draggedElement) {
-        const cell = getCellFromPointCalculated(e.clientX, e.clientY);
+        const cell = getCellFromPointCalculated(e.clientX, e.clientY, true);
         if (cell) {
             const elementId = parseInt(draggedElement.dataset.id);
             const element = state.elements.find(el => el.id === elementId);
@@ -296,15 +280,62 @@ function handleSelectionEnd(e) {
                 }
 
                 // Asegurar que la posición sea válida
+                newCol = Math.max(1, newCol);
+                newRow = Math.max(1, newRow);
+
+                // Actualizar posición visual en tiempo real (sin throttle para mayor fluidez)
+                draggedElement.style.gridColumn = `${newCol} / span ${element.columnSpan}`;
+                draggedElement.style.gridRow = `${newRow} / span ${element.rowSpan}`;
+            }
+        }
+        return;
+    }
+
+    if (!state.isSelecting) return;
+
+    const cell = getCellFromPoint(e.clientX, e.clientY);
+    if (!cell) return;
+
+    state.selectionEnd = { col: cell.col, row: cell.row };
+    updateSelectionOverlay();
+}
+
+// Finalizar selección
+function handleSelectionEnd(e) {
+    // Si estábamos arrastrando un elemento
+    if (draggedElement) {
+        const elementId = parseInt(draggedElement.dataset.id);
+        const element = state.elements.find(el => el.id === elementId);
+
+        if (element) {
+            // Hacer un cálculo final para asegurar la posición correcta
+            const cell = getCellFromPointCalculated(e.clientX, e.clientY, true);
+            if (cell) {
+                let newCol = cell.col;
+                let newRow = cell.row;
+
+                // Ajustar automáticamente si el elemento se sale por la derecha
+                if (newCol + element.columnSpan - 1 > state.columns) {
+                    newCol = state.columns - element.columnSpan + 1;
+                }
+
+                // Ajustar automáticamente si el elemento se sale por abajo
+                if (newRow + element.rowSpan - 1 > state.rows) {
+                    newRow = state.rows - element.rowSpan + 1;
+                }
+
+                // Actualizar el estado del elemento
                 element.column = Math.max(1, newCol);
                 element.row = Math.max(1, newRow);
 
-                // Mantener el tamaño original del elemento
+                // Asegurar que el elemento esté en la posición correcta visualmente
                 draggedElement.style.gridColumn = `${element.column} / span ${element.columnSpan}`;
                 draggedElement.style.gridRow = `${element.row} / span ${element.rowSpan}`;
-                generateCode();
             }
+
+            generateCode();
         }
+
         draggedElement.classList.remove('dragging');
         draggedElement = null;
         return;
@@ -323,33 +354,19 @@ function handleSelectionEnd(e) {
     const colSpan = maxCol - minCol + 1;
     const rowSpan = maxRow - minRow + 1;
 
-    // Si es un clic simple (1x1), crear directamente sin panel de confirmación
-    if (colSpan === 1 && rowSpan === 1) {
-        const element = {
-            id: state.elementCounter++,
-            column: minCol,
-            row: minRow,
-            columnSpan: 1,
-            rowSpan: 1
-        };
-
-        state.elements.push(element);
-        renderElement(element);
-        generateCode();
-        hideSelectionOverlay();
-        return;
-    }
-
-    // Para selecciones múltiples, guardar y mostrar panel
-    state.pendingSelection = {
+    // Crear elemento directamente al soltar
+    const element = {
+        id: state.elementCounter++,
         column: minCol,
         row: minRow,
         columnSpan: colSpan,
         rowSpan: rowSpan
     };
 
-    // Mostrar panel de confirmación
-    showConfirmationPanel(e.clientX, e.clientY, colSpan, rowSpan);
+    state.elements.push(element);
+    renderElement(element);
+    generateCode();
+    hideSelectionOverlay();
 }
 
 // Cancelar selección si el mouse sale del grid
@@ -379,45 +396,6 @@ function updateSelectionOverlay() {
 // Ocultar overlay de selección
 function hideSelectionOverlay() {
     selectionOverlay.classList.remove('active');
-}
-
-// Mostrar panel de confirmación
-function showConfirmationPanel(x, y, cols, rows) {
-    panelSize.textContent = `${cols}x${rows}`;
-    confirmationPanel.style.display = 'flex';
-    confirmationPanel.style.left = `${x}px`;
-    confirmationPanel.style.top = `${y}px`;
-}
-
-// Ocultar panel de confirmación
-function hideConfirmationPanel() {
-    confirmationPanel.style.display = 'none';
-    hideSelectionOverlay();
-    state.pendingSelection = null;
-}
-
-// Confirmar selección y crear elemento
-function confirmSelection() {
-    if (!state.pendingSelection) return;
-
-    const element = {
-        id: state.elementCounter++,
-        column: state.pendingSelection.column,
-        row: state.pendingSelection.row,
-        columnSpan: state.pendingSelection.columnSpan,
-        rowSpan: state.pendingSelection.rowSpan
-    };
-
-    state.elements.push(element);
-    renderElement(element);
-    generateCode();
-
-    hideConfirmationPanel();
-}
-
-// Cancelar selección
-function cancelSelection() {
-    hideConfirmationPanel();
 }
 
 // Renderizar elemento en el grid
