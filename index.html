@@ -43,8 +43,28 @@
 
         <!-- Grid wrapper -->
         <div class="grid-wrapper">
-            <div id="grid-container" class="grid-container">
-                <!-- Las celdas se generarán dinámicamente -->
+            <div class="grid-main">
+                <!-- Capa de celdas base -->
+                <div id="grid-cells" class="grid-cells">
+                    <!-- Las celdas se generarán dinámicamente -->
+                </div>
+
+                <!-- Capa de elementos generados -->
+                <div id="grid-items" class="grid-items">
+                    <!-- Los elementos se agregarán aquí -->
+                </div>
+
+                <!-- Overlay de selección -->
+                <div id="selection-overlay" class="selection-overlay"></div>
+            </div>
+
+            <!-- Panel flotante de confirmación -->
+            <div id="confirmation-panel" class="confirmation-panel" style="display: none;">
+                <div class="panel-size" id="panel-size">1x1</div>
+                <div class="panel-actions">
+                    <button class="panel-btn confirm-btn" id="confirm-btn">+</button>
+                    <button class="panel-btn cancel-btn" id="cancel-btn">×</button>
+                </div>
             </div>
         </div>
 

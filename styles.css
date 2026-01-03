@@ -97,15 +97,41 @@ body {
     max-width: 95%;
     margin: 0 auto;
     padding: 20px;
+    position: relative;
 }
 
-.grid-container {
+.grid-main {
+    position: relative;
+    width: 100%;
+    min-height: 600px;
+}
+
+.grid-cells,
+.grid-items {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     grid-template-rows: repeat(12, 1fr);
     gap: 8px;
     width: 100%;
     min-height: 600px;
+    user-select: none;
+}
+
+.grid-cells {
+    position: relative;
+    z-index: 1;
+}
+
+.grid-items {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.grid-items > * {
+    pointer-events: auto;
 }
 
 /* Celdas del grid */
@@ -119,6 +145,7 @@ body {
     position: relative;
     cursor: pointer;
     transition: all 0.2s ease;
+    z-index: 1;
 }
 
 .grid-cell:hover {
@@ -130,6 +157,7 @@ body {
     font-size: 20px;
     font-weight: 300;
     user-select: none;
+    pointer-events: none;
 }
 
 /* Elementos agregados al grid */
@@ -137,7 +165,7 @@ body {
     background: #8b7e6a;
     border-radius: 10px;
     position: relative;
-    cursor: move;
+    cursor: grab;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -145,14 +173,24 @@ body {
     font-weight: 500;
     transition: all 0.2s ease;
     min-height: 50px;
+    z-index: 5;
 }
 
 .grid-item:hover {
     background: #7a6f5c;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.grid-item:active {
+    cursor: grabbing;
 }
 
 .grid-item.dragging {
-    opacity: 0.5;
+    opacity: 0.7;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+    transform: scale(1.05);
+    z-index: 1000;
+    cursor: grabbing;
 }
 
 .grid-item .item-number {
@@ -301,6 +339,95 @@ body {
 
 .btn-copy:hover {
     background: #3a3a3a;
+}
+
+/* Overlay de selección */
+.selection-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(12, 1fr);
+    gap: 8px;
+    width: 100%;
+    min-height: 600px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.selection-overlay::before {
+    content: '';
+    display: none;
+    background: rgba(255, 182, 193, 0.4);
+    border: 2px solid rgba(255, 105, 135, 0.6);
+    border-radius: 10px;
+    grid-column: var(--sel-col-start, 1) / var(--sel-col-end, 2);
+    grid-row: var(--sel-row-start, 1) / var(--sel-row-end, 2);
+}
+
+.selection-overlay.active::before {
+    display: block;
+}
+
+/* Panel flotante de confirmación */
+.confirmation-panel {
+    position: absolute;
+    background: white;
+    border-radius: 12px;
+    padding: 15px 20px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    min-width: 120px;
+}
+
+.panel-size {
+    font-size: 18px;
+    font-weight: 600;
+    color: #2b2b2b;
+}
+
+.panel-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.panel-btn {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 8px;
+    font-size: 24px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.confirm-btn {
+    background: #48bb78;
+    color: white;
+}
+
+.confirm-btn:hover {
+    background: #38a169;
+    transform: scale(1.05);
+}
+
+.cancel-btn {
+    background: #e74c3c;
+    color: white;
+}
+
+.cancel-btn:hover {
+    background: #c0392b;
+    transform: scale(1.05);
 }
 
 /* Responsive */

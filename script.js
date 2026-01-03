@@ -4,11 +4,17 @@ const state = {
     rows: 12,
     gap: 8,
     elements: [],
-    elementCounter: 1
+    elementCounter: 1,
+    isSelecting: false,
+    selectionStart: null,
+    selectionEnd: null,
+    pendingSelection: null
 };
 
 // Referencias DOM
-const gridContainer = document.getElementById('grid-container');
+const gridCells = document.getElementById('grid-cells');
+const gridItems = document.getElementById('grid-items');
+const gridMain = document.querySelector('.grid-main');
 const columnsValue = document.getElementById('columns-value');
 const rowsValue = document.getElementById('rows-value');
 const gapValue = document.getElementById('gap-value');
@@ -21,11 +27,16 @@ const copyCodeBtn = document.getElementById('copy-code');
 const tabBtns = document.querySelectorAll('.tab-btn');
 const htmlCodeBlock = document.querySelector('#html-code code');
 const cssCodeBlock = document.querySelector('#css-code code');
+const selectionOverlay = document.getElementById('selection-overlay');
+const confirmationPanel = document.getElementById('confirmation-panel');
+const panelSize = document.getElementById('panel-size');
+const confirmBtn = document.getElementById('confirm-btn');
+const cancelBtn = document.getElementById('cancel-btn');
 
-// Variables para drag & drop
+// Variables para drag & drop de elementos existentes
 let draggedElement = null;
 let resizingElement = null;
-let startX, startY, startCol, startRow, startColSpan, startRowSpan;
+let startX, startY, startColSpan, startRowSpan;
 
 // Inicializar
 function init() {
@@ -60,9 +71,15 @@ function setupEventListeners() {
         });
     });
 
-    // Drag & drop
-    gridContainer.addEventListener('dragover', handleDragOver);
-    gridContainer.addEventListener('drop', handleDrop);
+    // Selección por arrastre
+    gridMain.addEventListener('mousedown', handleSelectionStart);
+    gridMain.addEventListener('mousemove', handleSelectionMove);
+    gridMain.addEventListener('mouseup', handleSelectionEnd);
+    gridMain.addEventListener('mouseleave', handleSelectionCancel);
+
+    // Botones de confirmación
+    confirmBtn.addEventListener('click', confirmSelection);
+    cancelBtn.addEventListener('click', cancelSelection);
 }
 
 // Configurar botón de control con +/-
@@ -100,58 +117,314 @@ function updateGrid() {
 
 // Generar celdas del grid
 function generateGridCells() {
-    // Limpiar celdas existentes pero mantener elementos
-    const existingElements = Array.from(gridContainer.querySelectorAll('.grid-item'));
-    gridContainer.innerHTML = '';
+    // Limpiar solo las celdas
+    gridCells.innerHTML = '';
 
-    // Crear celdas con símbolo +
+    // Crear celdas con símbolo + (FIJAS según columns x rows)
     const totalCells = state.columns * state.rows;
     for (let i = 0; i < totalCells; i++) {
         const cell = document.createElement('div');
         cell.className = 'grid-cell';
+        cell.dataset.index = i;
+        const col = (i % state.columns) + 1;
+        const row = Math.floor(i / state.columns) + 1;
+        cell.dataset.col = col;
+        cell.dataset.row = row;
         cell.innerHTML = '<span class="plus-icon">+</span>';
 
-        // Evento para agregar elemento al hacer clic
-        cell.addEventListener('click', () => {
-            const col = (i % state.columns) + 1;
-            const row = Math.floor(i / state.columns) + 1;
-            addElementAt(col, row);
-        });
-
-        gridContainer.appendChild(cell);
+        gridCells.appendChild(cell);
     }
-
-    // Re-agregar elementos existentes
-    existingElements.forEach(el => gridContainer.appendChild(el));
 }
 
 // Actualizar estilos del grid
 function updateGridStyles() {
-    gridContainer.style.gridTemplateColumns = `repeat(${state.columns}, 1fr)`;
-    gridContainer.style.gridTemplateRows = `repeat(${state.rows}, 1fr)`;
-    gridContainer.style.gap = `${state.gap}px`;
+    const gridStyle = `repeat(${state.columns}, 1fr)`;
+    const rowStyle = `repeat(${state.rows}, 1fr)`;
+    const gapStyle = `${state.gap}px`;
+
+    // Actualizar celdas base
+    gridCells.style.gridTemplateColumns = gridStyle;
+    gridCells.style.gridTemplateRows = rowStyle;
+    gridCells.style.gap = gapStyle;
+
+    // Actualizar capa de items
+    gridItems.style.gridTemplateColumns = gridStyle;
+    gridItems.style.gridTemplateRows = rowStyle;
+    gridItems.style.gap = gapStyle;
+
+    // Actualizar overlay de selección
+    selectionOverlay.style.gridTemplateColumns = gridStyle;
+    selectionOverlay.style.gridTemplateRows = rowStyle;
+    selectionOverlay.style.gap = gapStyle;
 }
 
-// Agregar elemento en posición específica
-function addElementAt(col, row) {
+// Obtener celda desde coordenadas del mouse
+function getCellFromPoint(x, y) {
+    const cells = gridCells.querySelectorAll('.grid-cell');
+    for (let cell of cells) {
+        const rect = cell.getBoundingClientRect();
+        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+            return {
+                col: parseInt(cell.dataset.col),
+                row: parseInt(cell.dataset.row),
+                element: cell
+            };
+        }
+    }
+    return null;
+}
+
+// Obtener celda desde coordenadas usando cálculo directo
+function getCellFromPointCalculated(x, y) {
+    const gridRect = gridCells.getBoundingClientRect();
+
+    // Calcular posición relativa dentro del grid
+    const relX = x - gridRect.left;
+    const relY = y - gridRect.top;
+
+    // Calcular dimensiones de cada celda incluyendo el gap
+    const totalGapX = state.gap * (state.columns - 1);
+    const totalGapY = state.gap * (state.rows - 1);
+    const cellWidth = (gridRect.width - totalGapX) / state.columns;
+    const cellHeight = (gridRect.height - totalGapY) / state.rows;
+
+    // Calcular columna y fila
+    let col = 1;
+    let row = 1;
+    let accumulatedX = 0;
+    let accumulatedY = 0;
+
+    // Encontrar columna
+    for (let c = 1; c <= state.columns; c++) {
+        const cellEnd = accumulatedX + cellWidth;
+        if (relX < cellEnd) {
+            col = c;
+            break;
+        }
+        accumulatedX = cellEnd + state.gap;
+        if (c === state.columns) col = state.columns;
+    }
+
+    // Encontrar fila
+    for (let r = 1; r <= state.rows; r++) {
+        const cellEnd = accumulatedY + cellHeight;
+        if (relY < cellEnd) {
+            row = r;
+            break;
+        }
+        accumulatedY = cellEnd + state.gap;
+        if (r === state.rows) row = state.rows;
+    }
+
+    return {
+        col: Math.max(1, Math.min(state.columns, col)),
+        row: Math.max(1, Math.min(state.rows, row))
+    };
+}
+
+// Iniciar selección
+function handleSelectionStart(e) {
+    // Ignorar si se hace clic en un elemento existente
+    if (e.target.closest('.grid-item')) {
+        const item = e.target.closest('.grid-item');
+        // Si es el botón de eliminar, permitir
+        if (e.target.classList.contains('delete-btn')) {
+            return;
+        }
+        // Si es el resize handle, permitir resize
+        if (e.target.classList.contains('resize-handle')) {
+            const elementId = parseInt(item.dataset.id);
+            const element = state.elements.find(el => el.id === elementId);
+            if (element) {
+                startResize(e, element);
+            }
+            return;
+        }
+        // Iniciar drag
+        draggedElement = item;
+        item.classList.add('dragging');
+        return;
+    }
+
+    // Ignorar si no es sobre una celda
+    const cell = getCellFromPoint(e.clientX, e.clientY);
+    if (!cell) return;
+
+    state.isSelecting = true;
+    state.selectionStart = { col: cell.col, row: cell.row };
+    state.selectionEnd = { col: cell.col, row: cell.row };
+
+    updateSelectionOverlay();
+}
+
+// Mover selección
+function handleSelectionMove(e) {
+    // Si estamos arrastrando un elemento existente
+    if (draggedElement) {
+        return;
+    }
+
+    if (!state.isSelecting) return;
+
+    const cell = getCellFromPoint(e.clientX, e.clientY);
+    if (!cell) return;
+
+    state.selectionEnd = { col: cell.col, row: cell.row };
+    updateSelectionOverlay();
+}
+
+// Finalizar selección
+function handleSelectionEnd(e) {
+    // Si estábamos arrastrando un elemento
+    if (draggedElement) {
+        const cell = getCellFromPointCalculated(e.clientX, e.clientY);
+        if (cell) {
+            const elementId = parseInt(draggedElement.dataset.id);
+            const element = state.elements.find(el => el.id === elementId);
+            if (element) {
+                let newCol = cell.col;
+                let newRow = cell.row;
+
+                // Ajustar automáticamente si el elemento se sale por la derecha
+                if (newCol + element.columnSpan - 1 > state.columns) {
+                    newCol = state.columns - element.columnSpan + 1;
+                }
+
+                // Ajustar automáticamente si el elemento se sale por abajo
+                if (newRow + element.rowSpan - 1 > state.rows) {
+                    newRow = state.rows - element.rowSpan + 1;
+                }
+
+                // Asegurar que la posición sea válida
+                element.column = Math.max(1, newCol);
+                element.row = Math.max(1, newRow);
+
+                // Mantener el tamaño original del elemento
+                draggedElement.style.gridColumn = `${element.column} / span ${element.columnSpan}`;
+                draggedElement.style.gridRow = `${element.row} / span ${element.rowSpan}`;
+                generateCode();
+            }
+        }
+        draggedElement.classList.remove('dragging');
+        draggedElement = null;
+        return;
+    }
+
+    if (!state.isSelecting) return;
+
+    state.isSelecting = false;
+
+    // Calcular área seleccionada
+    const minCol = Math.min(state.selectionStart.col, state.selectionEnd.col);
+    const maxCol = Math.max(state.selectionStart.col, state.selectionEnd.col);
+    const minRow = Math.min(state.selectionStart.row, state.selectionEnd.row);
+    const maxRow = Math.max(state.selectionStart.row, state.selectionEnd.row);
+
+    const colSpan = maxCol - minCol + 1;
+    const rowSpan = maxRow - minRow + 1;
+
+    // Si es un clic simple (1x1), crear directamente sin panel de confirmación
+    if (colSpan === 1 && rowSpan === 1) {
+        const element = {
+            id: state.elementCounter++,
+            column: minCol,
+            row: minRow,
+            columnSpan: 1,
+            rowSpan: 1
+        };
+
+        state.elements.push(element);
+        renderElement(element);
+        generateCode();
+        hideSelectionOverlay();
+        return;
+    }
+
+    // Para selecciones múltiples, guardar y mostrar panel
+    state.pendingSelection = {
+        column: minCol,
+        row: minRow,
+        columnSpan: colSpan,
+        rowSpan: rowSpan
+    };
+
+    // Mostrar panel de confirmación
+    showConfirmationPanel(e.clientX, e.clientY, colSpan, rowSpan);
+}
+
+// Cancelar selección si el mouse sale del grid
+function handleSelectionCancel(e) {
+    if (state.isSelecting) {
+        state.isSelecting = false;
+        hideSelectionOverlay();
+    }
+}
+
+// Actualizar overlay de selección
+function updateSelectionOverlay() {
+    if (!state.selectionStart || !state.selectionEnd) return;
+
+    const minCol = Math.min(state.selectionStart.col, state.selectionEnd.col);
+    const maxCol = Math.max(state.selectionStart.col, state.selectionEnd.col);
+    const minRow = Math.min(state.selectionStart.row, state.selectionEnd.row);
+    const maxRow = Math.max(state.selectionStart.row, state.selectionEnd.row);
+
+    selectionOverlay.style.setProperty('--sel-col-start', minCol);
+    selectionOverlay.style.setProperty('--sel-col-end', maxCol + 1);
+    selectionOverlay.style.setProperty('--sel-row-start', minRow);
+    selectionOverlay.style.setProperty('--sel-row-end', maxRow + 1);
+    selectionOverlay.classList.add('active');
+}
+
+// Ocultar overlay de selección
+function hideSelectionOverlay() {
+    selectionOverlay.classList.remove('active');
+}
+
+// Mostrar panel de confirmación
+function showConfirmationPanel(x, y, cols, rows) {
+    panelSize.textContent = `${cols}x${rows}`;
+    confirmationPanel.style.display = 'flex';
+    confirmationPanel.style.left = `${x}px`;
+    confirmationPanel.style.top = `${y}px`;
+}
+
+// Ocultar panel de confirmación
+function hideConfirmationPanel() {
+    confirmationPanel.style.display = 'none';
+    hideSelectionOverlay();
+    state.pendingSelection = null;
+}
+
+// Confirmar selección y crear elemento
+function confirmSelection() {
+    if (!state.pendingSelection) return;
+
     const element = {
         id: state.elementCounter++,
-        column: col,
-        row: row,
-        columnSpan: 1,
-        rowSpan: 1
+        column: state.pendingSelection.column,
+        row: state.pendingSelection.row,
+        columnSpan: state.pendingSelection.columnSpan,
+        rowSpan: state.pendingSelection.rowSpan
     };
 
     state.elements.push(element);
     renderElement(element);
     generateCode();
+
+    hideConfirmationPanel();
+}
+
+// Cancelar selección
+function cancelSelection() {
+    hideConfirmationPanel();
 }
 
 // Renderizar elemento en el grid
 function renderElement(element) {
     const div = document.createElement('div');
     div.className = 'grid-item';
-    div.draggable = true;
+    div.draggable = false;
     div.dataset.id = element.id;
 
     div.style.gridColumn = `${element.column} / span ${element.columnSpan}`;
@@ -162,10 +435,6 @@ function renderElement(element) {
         <button class="delete-btn">×</button>
         <div class="resize-handle"></div>
     `;
-
-    // Event listeners
-    div.addEventListener('dragstart', handleDragStart);
-    div.addEventListener('dragend', handleDragEnd);
 
     const deleteBtn = div.querySelector('.delete-btn');
     deleteBtn.addEventListener('click', (e) => {
@@ -179,88 +448,41 @@ function renderElement(element) {
         startResize(e, element);
     });
 
-    gridContainer.appendChild(div);
+    gridItems.appendChild(div);
 }
 
 // Re-renderizar todos los elementos
 function rerenderElements() {
-    // Eliminar elementos existentes del DOM
-    const items = gridContainer.querySelectorAll('.grid-item');
-    items.forEach(item => item.remove());
+    // Limpiar elementos existentes
+    gridItems.innerHTML = '';
 
-    // Validar y ajustar posiciones de elementos
-    state.elements = state.elements.map(el => {
-        return {
-            ...el,
-            column: Math.min(el.column, state.columns),
-            row: Math.min(el.row, state.rows),
-            columnSpan: Math.min(el.columnSpan, state.columns - el.column + 1),
-            rowSpan: Math.min(el.rowSpan, state.rows - el.row + 1)
-        };
+    // Filtrar elementos que están completamente fuera del grid
+    state.elements = state.elements.filter(el => {
+        return el.column <= state.columns && el.row <= state.rows;
     });
 
-    // Renderizar cada elemento
+    // Ajustar solo la posición si está fuera, pero mantener el tamaño
+    state.elements.forEach(el => {
+        // Si el elemento se sale del borde derecho o inferior, ajustar su posición
+        if (el.column + el.columnSpan - 1 > state.columns) {
+            el.column = Math.max(1, state.columns - el.columnSpan + 1);
+        }
+        if (el.row + el.rowSpan - 1 > state.rows) {
+            el.row = Math.max(1, state.rows - el.rowSpan + 1);
+        }
+    });
+
     state.elements.forEach(element => renderElement(element));
 }
 
 // Eliminar elemento
 function deleteElement(id) {
     state.elements = state.elements.filter(el => el.id !== id);
-    const elementDiv = gridContainer.querySelector(`[data-id="${id}"]`);
+    const elementDiv = gridItems.querySelector(`[data-id="${id}"]`);
     if (elementDiv) {
         elementDiv.remove();
     }
     generateCode();
-}
-
-// Drag & Drop
-function handleDragStart(e) {
-    draggedElement = e.target;
-    draggedElement.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-}
-
-function handleDragEnd(e) {
-    if (draggedElement) {
-        draggedElement.classList.remove('dragging');
-        draggedElement = null;
-    }
-}
-
-function handleDragOver(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-}
-
-function handleDrop(e) {
-    e.preventDefault();
-
-    if (!draggedElement) return;
-
-    const gridRect = gridContainer.getBoundingClientRect();
-    const x = e.clientX - gridRect.left;
-    const y = e.clientY - gridRect.top;
-
-    const cellWidth = gridRect.width / state.columns;
-    const cellHeight = gridRect.height / state.rows;
-
-    const col = Math.max(1, Math.min(state.columns, Math.floor(x / cellWidth) + 1));
-    const row = Math.max(1, Math.min(state.rows, Math.floor(y / cellHeight) + 1));
-
-    const elementId = parseInt(draggedElement.dataset.id);
-    const element = state.elements.find(el => el.id === elementId);
-
-    if (element) {
-        element.column = col;
-        element.row = row;
-        // Ajustar spans si es necesario
-        element.columnSpan = Math.min(element.columnSpan, state.columns - element.column + 1);
-        element.rowSpan = Math.min(element.rowSpan, state.rows - element.row + 1);
-
-        draggedElement.style.gridColumn = `${element.column} / span ${element.columnSpan}`;
-        draggedElement.style.gridRow = `${element.row} / span ${element.rowSpan}`;
-        generateCode();
-    }
 }
 
 // Resize
@@ -283,12 +505,16 @@ function handleResize(e) {
     const deltaX = e.clientX - startX;
     const deltaY = e.clientY - startY;
 
-    const gridRect = gridContainer.getBoundingClientRect();
-    const cellWidth = gridRect.width / state.columns;
-    const cellHeight = gridRect.height / state.rows;
+    const gridRect = gridCells.getBoundingClientRect();
 
-    const colChange = Math.round(deltaX / cellWidth);
-    const rowChange = Math.round(deltaY / cellHeight);
+    // Calcular dimensiones de celda considerando gaps
+    const totalGapX = state.gap * (state.columns - 1);
+    const totalGapY = state.gap * (state.rows - 1);
+    const cellWidth = (gridRect.width - totalGapX) / state.columns;
+    const cellHeight = (gridRect.height - totalGapY) / state.rows;
+
+    const colChange = Math.round(deltaX / (cellWidth + state.gap));
+    const rowChange = Math.round(deltaY / (cellHeight + state.gap));
 
     const maxColSpan = state.columns - resizingElement.column + 1;
     const maxRowSpan = state.rows - resizingElement.row + 1;
@@ -299,7 +525,7 @@ function handleResize(e) {
     resizingElement.columnSpan = newColSpan;
     resizingElement.rowSpan = newRowSpan;
 
-    const elementDiv = gridContainer.querySelector(`[data-id="${resizingElement.id}"]`);
+    const elementDiv = gridItems.querySelector(`[data-id="${resizingElement.id}"]`);
     if (elementDiv) {
         elementDiv.style.gridColumn = `${resizingElement.column} / span ${resizingElement.columnSpan}`;
         elementDiv.style.gridRow = `${resizingElement.row} / span ${resizingElement.rowSpan}`;
