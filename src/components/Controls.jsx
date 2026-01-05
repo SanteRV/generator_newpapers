@@ -41,7 +41,7 @@ function Controls({ columns, rows, gap, onColumnsChange, onRowsChange, onGapChan
   return (
     <div className="controls-horizontal">
       <ControlButton
-        label="Columns"
+        label="Columnas"
         value={columns}
         property="columns"
         min={1}
@@ -49,7 +49,7 @@ function Controls({ columns, rows, gap, onColumnsChange, onRowsChange, onGapChan
         onChange={onColumnsChange}
       />
       <ControlButton
-        label="Rows"
+        label="Filas"
         value={rows}
         property="rows"
         min={1}
@@ -57,7 +57,7 @@ function Controls({ columns, rows, gap, onColumnsChange, onRowsChange, onGapChan
         onChange={onRowsChange}
       />
       <ControlButton
-        label="Gap(px)"
+        label="Espacio(px)"
         value={gap}
         property="gap"
         min={0}

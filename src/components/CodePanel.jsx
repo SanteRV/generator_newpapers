@@ -4,7 +4,7 @@ function CodePanel({ showCode, activeTab, columns, rows, gap, elements, onToggle
   const htmlCode = useMemo(() => {
     let html = '<div class="grid-container">\n'
     elements.forEach(element => {
-      html += `  <div class="grid-item item-${element.id}">Element ${element.id}</div>\n`
+      html += `  <div class="grid-item item-${element.id}">Elemento ${element.id}</div>\n`
     })
     html += '</div>'
     return html
@@ -46,20 +46,20 @@ function CodePanel({ showCode, activeTab, columns, rows, gap, elements, onToggle
       const btn = document.getElementById('copy-code-btn')
       if (btn) {
         const originalText = btn.textContent
-        btn.textContent = 'Copied!'
+        btn.textContent = '¡Copiado!'
         setTimeout(() => {
           btn.textContent = originalText
         }, 2000)
       }
     }).catch(err => {
-      alert('Error copying: ' + err)
+      alert('Error al copiar: ' + err)
     })
   }
 
   return (
     <div className="code-section">
       <button className="toggle-code-btn" onClick={onToggleCode}>
-        {showCode ? 'Hide Code' : 'Show Code'}
+        {showCode ? 'Ocultar Código' : 'Mostrar Código'}
       </button>
       {showCode && (
         <div className="code-panel">
@@ -86,7 +86,7 @@ function CodePanel({ showCode, activeTab, columns, rows, gap, elements, onToggle
             </pre>
           </div>
           <button id="copy-code-btn" className="btn-copy" onClick={handleCopyCode}>
-            Copy Code
+            Copiar Código
           </button>
         </div>
       )}
