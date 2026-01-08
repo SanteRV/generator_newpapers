@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
+import { COLOR_PALETTE } from '../utils/colors'
 
-function TemplatesPanel({ onLoadTemplate, currentTemplate }) {
+function TemplatesPanel({ onLoadTemplate, currentTemplate, selectedElementId, onUpdateElement }) {
   const [templates, setTemplates] = useState([])
   const [templateName, setTemplateName] = useState('')
+  const [activeSection, setActiveSection] = useState('plantillas')
 
   // Cargar plantillas del localStorage al montar
   useEffect(() => {
@@ -75,13 +77,36 @@ function TemplatesPanel({ onLoadTemplate, currentTemplate }) {
     })
   }
 
+  const handleColorSelect = (colorValue, e) => {
+    e?.stopPropagation()
+    e?.preventDefault()
+    if (selectedElementId && onUpdateElement) {
+      onUpdateElement(selectedElementId, { color: colorValue })
+    }
+  }
+
   return (
     <div className="templates-panel">
       <div className="templates-panel-header">
-        <h2>Plantillas</h2>
+        <div className="templates-panel-tabs">
+          <button
+            className={`templates-tab ${activeSection === 'plantillas' ? 'active' : ''}`}
+            onClick={() => setActiveSection('plantillas')}
+          >
+            Plantillas
+          </button>
+          <button
+            className={`templates-tab ${activeSection === 'herramientas' ? 'active' : ''}`}
+            onClick={() => setActiveSection('herramientas')}
+          >
+            Herramientas
+          </button>
+        </div>
       </div>
 
-      <div className="templates-save-section">
+      {activeSection === 'plantillas' && (
+        <>
+          <div className="templates-save-section">
         <div className="templates-save-form">
           <input
             type="text"
@@ -152,7 +177,8 @@ function TemplatesPanel({ onLoadTemplate, currentTemplate }) {
                             className="template-preview-element"
                             style={{
                               gridColumn: `${element.column} / span ${element.columnSpan}`,
-                              gridRow: `${element.row} / span ${adjustedRowSpan}`
+                              gridRow: `${element.row} / span ${adjustedRowSpan}`,
+                              backgroundColor: element.color || '#ffffff'
                             }}
                           />
                         )
@@ -179,8 +205,36 @@ function TemplatesPanel({ onLoadTemplate, currentTemplate }) {
               </div>
             ))}
           </div>
-        )}
-      </div>
+          )}
+        </div>
+        </>
+      )}
+
+      {activeSection === 'herramientas' && (
+        <div className="tools-section" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+          <div className="tools-color-palette">
+            <h3>Paleta de colores</h3>
+            <p className="tools-hint">
+              {selectedElementId 
+                ? 'Selecciona un color para aplicar al elemento seleccionado'
+                : 'Selecciona un elemento del grid para cambiar su color'}
+            </p>
+            <div className="color-palette-grid" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+              {COLOR_PALETTE.map(color => (
+                <button
+                  key={color.value}
+                  className={`color-palette-item ${selectedElementId ? '' : 'disabled'}`}
+                  style={{ backgroundColor: color.value }}
+                  onClick={(e) => handleColorSelect(color.value, e)}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  disabled={!selectedElementId}
+                  title={color.name}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

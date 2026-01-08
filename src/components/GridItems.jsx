@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
+import { DEFAULT_COLOR } from '../utils/colors'
 
-function GridItems({ elements, draggedElement, dragOffset, onDeleteElement, onResizeStart, columns, rows, gap, style }) {
+function GridItems({ elements, draggedElement, dragOffset, onDeleteElement, onResizeStart, onUpdateElement, selectedElementId, columns, rows, gap, isNewspaperMode, style }) {
   const itemRefs = useRef({})
   const dragDimensionsRef = useRef({ width: 0, height: 0 })
 
@@ -85,6 +86,7 @@ function GridItems({ elements, draggedElement, dragOffset, onDeleteElement, onRe
     }
   }, [draggedElement, dragOffset])
 
+
   return (
     <div className="grid-items" style={style}>
       {elements.map(element => (
@@ -95,26 +97,63 @@ function GridItems({ elements, draggedElement, dragOffset, onDeleteElement, onRe
           data-id={element.id}
           style={{
             gridColumn: `${element.column} / span ${element.columnSpan}`,
-            gridRow: `${element.row} / span ${element.rowSpan}`
+            gridRow: `${element.row} / span ${element.rowSpan}`,
+            backgroundColor: element.color || DEFAULT_COLOR,
+            outline: selectedElementId === element.id && draggedElement?.elementId !== element.id ? '3px solid #2b2b2b' : 'none',
+            outlineOffset: '-2px'
           }}
         >
-          <span className="item-number">{element.id}</span>
-          <button 
-            className="delete-btn"
-            onClick={(e) => {
-              e.stopPropagation()
-              onDeleteElement(element.id)
-            }}
-          >
-            ×
-          </button>
-          <div 
-            className="resize-handle"
-            onMouseDown={(e) => {
-              e.stopPropagation()
-              onResizeStart(e, element)
-            }}
-          ></div>
+          {isNewspaperMode ? (
+            <>
+              <textarea
+                className="grid-item-text"
+                value={element.text || ''}
+                onChange={(e) => {
+                  e.stopPropagation()
+                  onUpdateElement(element.id, { text: e.target.value })
+                }}
+                onDoubleClick={(e) => e.stopPropagation()}
+                placeholder="Escribe tu contenido aquí..."
+                onClick={(e) => e.stopPropagation()}
+              />
+              <button 
+                className="delete-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onDeleteElement(element.id)
+                }}
+              >
+                ×
+              </button>
+              <div 
+                className="resize-handle"
+                onMouseDown={(e) => {
+                  e.stopPropagation()
+                  onResizeStart(e, element)
+                }}
+              ></div>
+            </>
+          ) : (
+            <>
+              <span className="item-number">{element.id}</span>
+              <button 
+                className="delete-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onDeleteElement(element.id)
+                }}
+              >
+                ×
+              </button>
+              <div 
+                className="resize-handle"
+                onMouseDown={(e) => {
+                  e.stopPropagation()
+                  onResizeStart(e, element)
+                }}
+              ></div>
+            </>
+          )}
         </div>
       ))}
     </div>

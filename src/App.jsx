@@ -3,15 +3,23 @@ import Controls from './components/Controls'
 import GridVisualizer from './components/GridVisualizer'
 import CodePanel from './components/CodePanel'
 import TemplatesPanel from './components/TemplatesPanel'
+import { calculateColumns, calculateRows, NEWSPAPER_CONFIG, mmToPx } from './utils/newspaperConfig'
 
 function App() {
-  const [columns, setColumns] = useState(5)
-  const [rows, setRows] = useState(12)
-  const [gap, setGap] = useState(8)
+  // Modo periódico: calcular dimensiones automáticamente
+  const initialColumns = calculateColumns()
+  const initialRows = calculateRows()
+  const initialGapMm = NEWSPAPER_CONFIG.columnGap
+  
+  const [columns, setColumns] = useState(initialColumns)
+  const [rows, setRows] = useState(initialRows)
+  const [gap, setGap] = useState(initialGapMm) // Ahora en mm
   const [elements, setElements] = useState([])
   const [elementCounter, setElementCounter] = useState(1)
   const [showCode, setShowCode] = useState(false)
   const [activeTab, setActiveTab] = useState('html')
+  const [isNewspaperMode, setIsNewspaperMode] = useState(true)
+  const [selectedElementId, setSelectedElementId] = useState(null)
 
   const updateGrid = useCallback(() => {
     // Filtrar elementos que están completamente fuera del grid
@@ -46,7 +54,7 @@ function App() {
   }, [columns, rows, updateGrid])
 
   const handleAddElement = useCallback((newElement) => {
-    setElements(prev => [...prev, { ...newElement, id: elementCounter }])
+    setElements(prev => [...prev, { ...newElement, id: elementCounter, text: '', color: '#ffffff' }])
     setElementCounter(prev => prev + 1)
   }, [elementCounter])
 
@@ -64,7 +72,11 @@ function App() {
     setColumns(templateData.columns)
     setRows(templateData.rows)
     setGap(templateData.gap)
-    setElements(templateData.elements || [])
+    setIsNewspaperMode(templateData.isNewspaperMode !== undefined ? templateData.isNewspaperMode : true)
+    setElements((templateData.elements || []).map(el => ({
+      ...el,
+      color: el.color || '#ffffff'
+    })))
     // Ajustar el contador para evitar conflictos de IDs
     if (templateData.elements && templateData.elements.length > 0) {
       const maxId = Math.max(...templateData.elements.map(el => el.id))
@@ -79,15 +91,21 @@ function App() {
       columns,
       rows,
       gap,
+      isNewspaperMode,
       elements: elements.map(el => ({
         id: el.id,
         column: el.column,
         row: el.row,
         columnSpan: el.columnSpan,
-        rowSpan: el.rowSpan
+        rowSpan: el.rowSpan,
+        text: el.text || '',
+        color: el.color || '#ffffff'
       }))
     }
-  }, [columns, rows, gap, elements])
+  }, [columns, rows, gap, elements, isNewspaperMode])
+  
+  // Calcular gap en px para visualización
+  const gapPx = isNewspaperMode ? mmToPx(gap) : gap
 
   return (
     <div className="app-layout">
@@ -104,6 +122,7 @@ function App() {
             columns={columns}
             rows={rows}
             gap={gap}
+            isNewspaperMode={isNewspaperMode}
             onColumnsChange={setColumns}
             onRowsChange={setRows}
             onGapChange={setGap}
@@ -112,7 +131,9 @@ function App() {
           <GridVisualizer
             columns={columns}
             rows={rows}
-            gap={gap}
+            gap={gapPx}
+            gapMm={gap}
+            isNewspaperMode={isNewspaperMode}
             elements={elements}
             onAddElement={handleAddElement}
             onUpdateElement={handleUpdateElement}
@@ -125,6 +146,7 @@ function App() {
             columns={columns}
             rows={rows}
             gap={gap}
+            isNewspaperMode={isNewspaperMode}
             elements={elements}
             onToggleCode={() => setShowCode(prev => !prev)}
             onTabChange={setActiveTab}
@@ -135,6 +157,8 @@ function App() {
       <TemplatesPanel
         onLoadTemplate={handleLoadTemplate}
         currentTemplate={getCurrentTemplate()}
+        selectedElementId={selectedElementId}
+        onUpdateElement={handleUpdateElement}
       />
     </div>
   )

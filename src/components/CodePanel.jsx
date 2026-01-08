@@ -1,32 +1,37 @@
 import React, { useMemo } from 'react'
 
-function CodePanel({ showCode, activeTab, columns, rows, gap, elements, onToggleCode, onTabChange }) {
+function CodePanel({ showCode, activeTab, columns, rows, gap, isNewspaperMode, elements, onToggleCode, onTabChange }) {
   const htmlCode = useMemo(() => {
     let html = '<div class="grid-container">\n'
     elements.forEach(element => {
-      html += `  <div class="grid-item item-${element.id}">Elemento ${element.id}</div>\n`
+      const text = element.text || ''
+      if (isNewspaperMode && text) {
+        html += `  <div class="grid-item item-${element.id}">${text.replace(/\n/g, '<br>')}</div>\n`
+      } else {
+        html += `  <div class="grid-item item-${element.id}">Elemento ${element.id}</div>\n`
+      }
     })
     html += '</div>'
     return html
-  }, [elements])
+  }, [elements, isNewspaperMode])
 
   const cssCode = useMemo(() => {
+    const gapUnit = isNewspaperMode ? 'mm' : 'px'
+    const gapValue = gap
+    
     let css = '.grid-container {\n'
     css += '  display: grid;\n'
     css += `  grid-template-columns: repeat(${columns}, 1fr);\n`
     css += `  grid-template-rows: repeat(${rows}, 1fr);\n`
-    if (gap > 0) {
-      css += `  gap: ${gap}px;\n`
+    if (gapValue > 0) {
+      css += `  gap: ${gapValue}${gapUnit};\n`
     }
     css += '}\n\n'
     css += '.grid-item {\n'
-    css += '  background: #8b7e6a;\n'
-    css += '  padding: 20px;\n'
-    css += '  border-radius: 10px;\n'
-    css += '  color: white;\n'
-    css += '  display: flex;\n'
-    css += '  align-items: center;\n'
-    css += '  justify-content: center;\n'
+    css += '  background: #ffffff;\n'
+    css += '  padding: 10px;\n'
+    css += '  border: 2px solid #8b7e6a;\n'
+    css += '  color: #2b2b2b;\n'
     css += '}\n'
     if (elements.length > 0) {
       css += '\n'
@@ -34,11 +39,14 @@ function CodePanel({ showCode, activeTab, columns, rows, gap, elements, onToggle
         css += `.item-${element.id} {\n`
         css += `  grid-column: ${element.column} / span ${element.columnSpan};\n`
         css += `  grid-row: ${element.row} / span ${element.rowSpan};\n`
+        if (element.color && element.color !== '#ffffff') {
+          css += `  background-color: ${element.color};\n`
+        }
         css += '}\n\n'
       })
     }
     return css
-  }, [columns, rows, gap, elements])
+  }, [columns, rows, gap, elements, isNewspaperMode])
 
   const handleCopyCode = () => {
     const code = activeTab === 'html' ? htmlCode : cssCode

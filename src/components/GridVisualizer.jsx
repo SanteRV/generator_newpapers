@@ -3,7 +3,7 @@ import GridCells from './GridCells'
 import GridItems from './GridItems'
 import SelectionOverlay from './SelectionOverlay'
 
-function GridVisualizer({ columns, rows, gap, elements, onAddElement, onUpdateElement, onDeleteElement }) {
+function GridVisualizer({ columns, rows, gap, gapMm, isNewspaperMode, elements, onAddElement, onUpdateElement, onDeleteElement, selectedElementId, onSelectElement }) {
   const [isSelecting, setIsSelecting] = useState(false)
   const [selectionStart, setSelectionStart] = useState(null)
   const [selectionEnd, setSelectionEnd] = useState(null)
@@ -182,6 +182,11 @@ function GridVisualizer({ columns, rows, gap, elements, onAddElement, onUpdateEl
       const element = elements.find(el => el.id === elementId)
 
       if (element) {
+        // Seleccionar el elemento
+        if (onSelectElement) {
+          onSelectElement(elementId)
+        }
+        
         const rect = item.getBoundingClientRect()
         setDragOffset({
           x: e.clientX - rect.left,
@@ -453,10 +458,13 @@ function GridVisualizer({ columns, rows, gap, elements, onAddElement, onUpdateEl
           columns={columns}
           rows={rows}
           gap={gap}
+          isNewspaperMode={isNewspaperMode}
           elements={elements}
           draggedElement={draggedElement}
           dragOffset={dragOffset}
+          selectedElementId={selectedElementId}
           onDeleteElement={onDeleteElement}
+          onUpdateElement={onUpdateElement}
           onResizeStart={(e, element) => {
             setResizingElement(element)
             setResizeStart({
